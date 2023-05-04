@@ -5,10 +5,10 @@ pipeline {
       args '--user root -v /var/run/docker.sock:/var/run/docker.sock' // mount Docker socket to access the host's Docker daemon
     }
   }
-  options {
-        // This is required if you want to clean before build
-        skipDefaultCheckout(true)
-  }
+  // options {
+  //       // This is required if you want to clean before build
+  //       skipDefaultCheckout(true)
+  // }
   stages {
     stage('Checkout') {
       steps {
@@ -71,5 +71,15 @@ pipeline {
             }
         }
     }
+  }
+  post {
+  // Clean after build
+  always {
+      cleanWs(cleanWhenNotBuilt: false,
+              deleteDirs: true,
+              disableDeferredWipeout: true,
+              notFailBuild: true,
+              patterns: [[pattern: '.gitignore', type: 'INCLUDE'],
+                          [pattern: '.propsfile', type: 'EXCLUDE']])
   }
 }
