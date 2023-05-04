@@ -5,6 +5,10 @@ pipeline {
       args '--user root -v /var/run/docker.sock:/var/run/docker.sock' // mount Docker socket to access the host's Docker daemon
     }
   }
+  options {
+        // This is required if you want to clean before build
+        skipDefaultCheckout(true)
+  }
   stages {
     stage('Checkout') {
       steps {
@@ -59,7 +63,7 @@ pipeline {
                     git config user.email "viha.bobade@gmail.com"
                     git config user.name "Viha Bobade"
                     BUILD_NUMBER=${BUILD_NUMBER}
-                    sed -i "s/53/${BUILD_NUMBER}/g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                    sed -i "s/56/${BUILD_NUMBER}/g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
                     git add java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
                     git commit -m "Update deployment image to version ${BUILD_NUMBER}"
                     git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
