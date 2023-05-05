@@ -177,3 +177,9 @@ Apply the ingress.
 Confirm load balancer. This may take a few minutes.
 
    kubectl get ingress
+
+Delete cluster
+
+Delete the cluster avoid large AWS bill.
+
+eksctl delete cluster --name spring-boot-app-cluster
