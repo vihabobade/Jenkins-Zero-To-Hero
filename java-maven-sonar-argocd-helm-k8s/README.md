@@ -1,62 +1,179 @@
-# Jenkins Pipeline for Java based application using Maven, SonarQube, Argo CD, Helm and Kubernetes
+How To Deploy Spring Boot With Amazon EKS
 
-![Screenshot 2023-03-28 at 9 38 09 PM](https://user-images.githubusercontent.com/43399466/228301952-abc02ca2-9942-4a67-8293-f76647b6f9d8.png)
+Prerequisites
+Follow the getting started guide and make sure the following are installed:
+
+    AWS CLI
+    kubectl
+    eksctl
+
+https://docs.aws.amazon.com/eks/latest/userguide/getting-started.html
+
+Initial Setup
+
+Set up Spring Boot.
+
+    Use Spring Initializr to generate a new project.
+    Select Spring Web as dependency.
+    (Use any springboot JAVA project)
+
+Create Dockerfile.
+
+   # You can change this base image to anything else
+   # But make sure to use the correct version of Java
+   FROM folioci/alpine-jre-openjdk11
+
+   # Simply the artifact path
+   ARG artifact=target/spring-boot-web.jar
+
+   WORKDIR /opt/app
+
+   COPY ${artifact} app.jar
+
+   # This should not be changed
+   ENTRYPOINT ["java","-jar","app.jar"]
 
 
-Here are the step-by-step details to set up an end-to-end Jenkins pipeline for a Java application using SonarQube, Argo CD, Helm, and Kubernetes:
+Create an executable jar.
 
-Prerequisites:
+mvn clean package
 
-   -  Java application code hosted on a Git repository
-   -   Jenkins server
-   -  Kubernetes cluster
-   -  Helm package manager
-   -  Argo CD
+Run container.
 
-Steps:
+docker run -d -p 8080:8080 spring-boot-web-app
 
-    1. Install the necessary Jenkins plugins:
-       1.1 Git plugin
-       1.2 Maven Integration plugin
-       1.3 Pipeline plugin
-       1.4 Kubernetes Continuous Deploy plugin
 
-    2. Create a new Jenkins pipeline:
-       2.1 In Jenkins, create a new pipeline job and configure it with the Git repository URL for the Java application.
-       2.2 Add a Jenkinsfile to the Git repository to define the pipeline stages.
+Elastic Container Registry (ECR) Setup
 
-    3. Define the pipeline stages:
-        Stage 1: Checkout the source code from Git.
-        Stage 2: Build the Java application using Maven.
-        Stage 3: Run unit tests using JUnit and Mockito.
-        Stage 4: Run SonarQube analysis to check the code quality.
-        Stage 5: Package the application into a JAR file.
-        Stage 6: Deploy the application to a test environment using Helm.
-        Stage 7: Run user acceptance tests on the deployed application.
-        Stage 8: Promote the application to a production environment using Argo CD.
+    Go to Amazon ECR.
+    Create a repository.
+    Click on "View push commands".
+    Follow the instructions to push image.
+    Copy the image url.
 
-    4. Configure Jenkins pipeline stages:
-        Stage 1: Use the Git plugin to check out the source code from the Git repository.
-        Stage 2: Use the Maven Integration plugin to build the Java application.
-        Stage 3: Use the JUnit and Mockito plugins to run unit tests.
-        Stage 4: Use the SonarQube plugin to analyze the code quality of the Java application.
-        Stage 5: Use the Maven Integration plugin to package the application into a JAR file.
-        Stage 6: Use the Kubernetes Continuous Deploy plugin to deploy the application to a test environment using Helm.
-        Stage 7: Use a testing framework like Selenium to run user acceptance tests on the deployed application.
-        Stage 8: Use Argo CD to promote the application to a production environment.
+Elastic Kubernetes Service (EKS) Setup
 
-    5. Set up Argo CD:
-        Install Argo CD on the Kubernetes cluster.
-        Set up a Git repository for Argo CD to track the changes in the Helm charts and Kubernetes manifests.
-        Create a Helm chart for the Java application that includes the Kubernetes manifests and Helm values.
-        Add the Helm chart to the Git repository that Argo CD is tracking.
 
-    6. Configure Jenkins pipeline to integrate with Argo CD:
-       6.1 Add the Argo CD API token to Jenkins credentials.
-       6.2 Update the Jenkins pipeline to include the Argo CD deployment stage.
+Create EKS cluster.
 
-    7. Run the Jenkins pipeline:
-       7.1 Trigger the Jenkins pipeline to start the CI/CD process for the Java application.
-       7.2 Monitor the pipeline stages and fix any issues that arise.
+   eksctl create cluster --name spring-boot-app-cluster --region us-west-2
 
-This end-to-end Jenkins pipeline will automate the entire CI/CD process for a Java application, from code checkout to production deployment, using popular tools like SonarQube, Argo CD, Helm, and Kubernetes.
+   Confirm communication with cluster.
+
+   kubectl get svc
+
+
+Create yaml configuration. k8s.yaml
+
+Apply manifest.
+
+   kubectl apply -f k8s.yaml
+
+Confirm pods.
+
+   kubectl get pod
+
+Open shell into pod.
+
+   kubectl exec -it myapp-7487b94844-wvfmn -- bash # (Change pod name)
+
+Confirm load balancer.
+
+   kubectl get svc
+
+Confirm load balancer domain.
+
+   nslookup af220a880523a491a991ecc793ae1da2-125775810.us-west-2.elb.amazonaws.com (Change svc name)
+
+   **Note: This might take a few minutes.
+
+Set up AWS Load Balancer Controller
+
+For more complex traffic routing, see https://www.fullstackbook.com/devops/tutorials/how-to-set-up-aws-load-balancer-controller
+
+Get arn account number by running command:
+
+   aws sts get-caller-identity
+
+  **Note- This is needed for creating the iamserviceaccount.
+
+
+Here is a condensed version of the instructions:
+
+   oidc_id=$(aws eks describe-cluster --name spring-boot-app-cluster --query "cluster.identity.oidc.issuer" --output text | cut -d '/' -f 5)
+
+   aws iam list-open-id-connect-providers | grep $oidc_id
+
+   eksctl utils associate-iam-oidc-provider --cluster spring-boot-app-cluster --approve
+
+Set up Load Balancer. Note: Replace the arn account number and cluster name where applicable.
+
+   curl -o iam_policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.4.4/docs/install/iam_policy.json
+
+   aws iam create-policy \
+      --policy-name AWSLoadBalancerControllerIAMPolicy \
+      --policy-document file://iam_policy.json
+
+   eksctl create iamserviceaccount \
+   --cluster=spring-boot-app-cluster \
+   --namespace=kube-system \
+   --name=aws-load-balancer-controller \
+   --role-name "AmazonEKSLoadBalancerControllerRole" \
+   --attach-policy-arn=arn:aws:iam::111122223333:policy/AWSLoadBalancerControllerIAMPolicy \
+   --approve
+
+   kubectl apply \
+      --validate=false \
+      -f https://github.com/jetstack/cert-manager/releases/download/v1.5.4/cert-manager.yaml
+
+   curl -Lo v2_4_4_full.yaml https://github.com/kubernetes-sigs/aws-load-balancer-controller/releases/download/v2.4.4/v2_4_4_full.yaml
+
+   sed -i.bak -e '480,488d' ./v2_4_4_full.yaml
+
+   sed -i.bak -e 's|your-cluster-name|spring-boot-app-cluster|' ./v2_4_4_full.yaml
+
+   kubectl apply -f v2_4_4_full.yaml
+
+   curl -Lo v2_4_4_ingclass.yaml https://github.com/kubernetes-sigs/aws-load-balancer-controller/releases/download/v2.4.4/v2_4_4_ingclass.yaml
+
+   kubectl apply -f v2_4_4_ingclass.yaml
+
+
+Verify controller is installed.
+
+   kubectl get deployment -n kube-system aws-load-balancer-controller
+
+Set up Ingress
+
+Go to https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.4.4/docs/examples/2048/2048_full.yaml. Note the Ingress section.
+
+
+   apiVersion: networking.k8s.io/v1
+   kind: Ingress
+   metadata:
+   namespace: default
+   name: my-ingress
+   annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+   spec:
+   ingressClassName: alb
+   rules:
+      - http:
+         paths:
+            - path: /
+               pathType: Prefix
+               backend:
+               service:
+                  name: spring-boot-app-service
+                  port:
+                     number: 80
+
+
+Apply the ingress.
+
+   kubectl apply -f ingress.yaml
+
+Confirm load balancer. This may take a few minutes.
+
+   kubectl get ingress
